@@ -1,123 +1,107 @@
 """
 ==============================================================================
- seat.py - Aircraft Seat Map Module
+ seat.py - Aircraft Seat Map Module (Object-Oriented)
 ==============================================================================
 Module      : FC723 - Programming Theory
 Assignment  : Final Project - Part B
-
-Contains everything related to the physical layout of the Burak757
-aircraft: the row/column constants, the aisle and storage positions,
-and the functions used to build and validate the in-memory seat map.
-
-This module has no dependency on the database or on booking references
--- it only knows about seats and their basic status ("F" free,
-"S" storage, or a booking reference string once reserved). Keeping it
-separate makes the aircraft layout easy to test, and easy to reuse if
-Apache Airlines later introduces a different aircraft type.
 ==============================================================================
 """
 
-# ---------------------------------------------------------------------------
-# Aircraft layout constants
-# ---------------------------------------------------------------------------
-TOTAL_ROWS = 80                                    # Rows 1 - 80
-SEAT_COLUMNS = ["A", "B", "C", "D", "E", "F"]      # Real seat columns
-STORAGE_ROWS = {77, 78}                            # Rows where D & E are storage
-STORAGE_COLUMNS = {"D", "E"}                       # Columns affected by storage rows
 
-
-def build_seat_map():
+class SeatMap:
     """
-    Build and return the initial seat map as a dictionary.
+    Represents the seat layout of a single Burak757 aircraft.
 
-    Returns
-    -------
-    dict[str, str]
-        Keys are seat identifiers such as "1A", "45C", "80F".
-        Values are "F" (free) or "S" (storage - never bookable).
-
-    Notes
-    -----
-    The aisle ("X") is a visual/layout marker only. Because it does
-    not correspond to a bookable location, it is NOT stored as a
-    dictionary entry; it is inserted only when the map is printed
-    to the screen.
-    """
-    seat_map = {}
-    for row in range(1, TOTAL_ROWS + 1):
-        for col in SEAT_COLUMNS:
-            seat_id = f"{row}{col}"
-            if row in STORAGE_ROWS and col in STORAGE_COLUMNS:
-                seat_map[seat_id] = "S"      # storage - not bookable
-            else:
-                seat_map[seat_id] = "F"      # free - bookable
-    return seat_map
-
-
-def parse_seat_input(raw_input):
-    """
-    Validate and normalise a seat identifier typed by the user.
-
-    Parameters
+    Attributes
     ----------
-    raw_input : str
-        Raw text entered by the user, e.g. "12a", " 45C ".
-
-    Returns
-    -------
-    str or None
-        The normalised seat id (e.g. "12A") if the input has a valid
-        format (1-80 followed by A-F), otherwise None.
+    grid : dict[str, str]
+        Maps a seat identifier (e.g. "12A") to its current status:
+        "F" (free), "S" (storage - never bookable), or an 8-character
+        booking reference string if the seat is reserved.
     """
-    raw_input = raw_input.strip().upper()
-    if len(raw_input) < 2:
-        return None
 
-    col = raw_input[-1]
-    row_part = raw_input[:-1]
+    TOTAL_ROWS = 80                                    # Rows 1 - 80
+    SEAT_COLUMNS = ["A", "B", "C", "D", "E", "F"]      # Real seat columns
+    STORAGE_ROWS = {77, 78}                            # Rows where D & E are storage
+    STORAGE_COLUMNS = {"D", "E"}                       # Columns affected by storage rows
 
-    if col not in SEAT_COLUMNS:
-        return None
-    if not row_part.isdigit():
-        return None
+    def __init__(self):
+        """Build the initial seat map when a SeatMap object is created."""
+        # STATE ENCAPSULATION: Instantiate the core collection immediately upon object creation
+        self.grid = self._build_seat_map()
 
-    row = int(row_part)
-    if row < 1 or row > TOTAL_ROWS:
-        return None
+    def _build_seat_map(self):
+        """Build and return the initial seat map as a dictionary."""
+        grid = {}
+        for row in range(1, self.TOTAL_ROWS + 1):
+            for col in self.SEAT_COLUMNS:
+                seat_id = f"{row}{col}"
+                # CONDITIONAL LAYOUT: Enforce physical aircraft storage boundary rules [cite: 3, 95, 300]
+                if row in self.STORAGE_ROWS and col in self.STORAGE_COLUMNS:
+                    grid[seat_id] = "S"      # storage - not bookable [cite: 3, 95]
+                else:
+                    grid[seat_id] = "F"      # free - bookable [cite: 3, 95]
+        return grid
 
-    return f"{row}{col}"
+    @staticmethod
+    def parse_seat_input(raw_input):
+        """Validate and normalise a seat identifier typed by the user."""
+        # INPUT STANDARDISATION: Strip whitespaces and force uniform case matching
+        raw_input = raw_input.strip().upper()
+        if len(raw_input) < 2:
+            return None
 
+        col = raw_input[-1]
+        row_part = raw_input[:-1]
 
-def is_reserved(status):
-    """
-    Return True if `status` represents a reserved seat.
+        # STRUCTURAL CHECK: Verify row/column components map to valid plane coordinates
+        if col not in SeatMap.SEAT_COLUMNS:
+            return None
+        if not row_part.isdigit():
+            return None
 
-    A reserved seat no longer stores the letter "R" -- it stores an
-    8-character booking reference instead. A seat is therefore
-    considered reserved if its status is neither "F" (free), "S"
-    (storage) nor "X" (aisle).
-    """
-    return status not in ("F", "S", "X")
+        row = int(row_part)
+        if row < 1 or row > SeatMap.TOTAL_ROWS:
+            return None
 
+        return f"{row}{col}"
 
-def display_seat_map(seat_map):
-    """
-    Print a grid of the entire aircraft: columns A-C, aisle (X),
-    then D-F, for every row. Any status other than "F"/"S" (i.e. a
-    booking reference) is shown as "R" to keep the grid readable.
-    """
-    print("\n--- Apache Airlines / Burak757 Seat Map ---")
-    print("Row  A  B  C  X  D  E  F   (R = booked; use option 5 to look")
-    print("                            up the actual booking reference)")
-    for row in range(1, TOTAL_ROWS + 1):
-        cells = []
-        for col in ["A", "B", "C"]:
-            status = seat_map[f"{row}{col}"]
-            cells.append(status if status in ("F", "S") else "R")
-        cells.append("X")
-        for col in ["D", "E", "F"]:
-            status = seat_map[f"{row}{col}"]
-            cells.append(status if status in ("F", "S") else "R")
-        row_label = str(row).rjust(3)
-        print(f"{row_label}  " + "  ".join(cells))
-    print()
+    @staticmethod
+    def is_reserved(status):
+        """Return True if `status` represents a reserved seat."""
+        # BUSINESS LOGIC: A seat is reserved if it holds a unique alphanumeric reference [cite: 29, 121]
+        return status not in ("F", "S", "X")
+
+    def get_status(self, seat_id):
+        """Return the current status of a seat, or None if it does not exist."""
+        # DATA ABSTRACTON: Expose status safely without exposing the underlying dict directly
+        return self.grid.get(seat_id)
+
+    def set_status(self, seat_id, status):
+        """Set the status of a seat (e.g. to a booking reference or back to 'F')."""
+        # STATE MUTATION: Explicit method to modify state, ensuring clean integration with main.py
+        self.grid[seat_id] = status
+
+    def display(self):
+        """Print a grid of the entire aircraft."""
+        print("\n--- Apache Airlines / Burak757 Seat Map ---")
+        print("Row  A  B  C  X  D  E  F   (R = booked; use option 5 to look")
+        print("                            up the actual booking reference)")
+        for row in range(1, self.TOTAL_ROWS + 1):
+            cells = []
+            # UI SEPARATION: Columns A-C rendered before the physical aisle path [cite: 3, 95]
+            for col in ["A", "B", "C"]:
+                status = self.grid[f"{row}{col}"]
+                cells.append(status if status in ("F", "S") else "R")
+            
+            cells.append("X")  # DYNAMIC RENDERING: Inject aisle marker without storing it in memory [cite: 3, 95]
+            
+            # UI SEPARATION: Columns D-F rendered after the aisle path [cite: 3, 95]
+            for col in ["D", "E", "F"]:
+                status = self.grid[f"{row}{col}"]
+                cells.append(status if status in ("F", "S") else "R")
+            
+            # ALIGNMENT: Pad row indices to guarantee perfectly aligned grid formatting
+            row_label = str(row).rjust(3)
+            print(f"{row_label}  " + "  ".join(cells))
+        print()
