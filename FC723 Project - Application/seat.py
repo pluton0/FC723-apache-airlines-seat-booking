@@ -23,7 +23,7 @@ class SeatMap:
     TOTAL_ROWS = 80                                    # Rows 1 - 80
     SEAT_COLUMNS = ["A", "B", "C", "D", "E", "F"]      # Real seat columns
     STORAGE_ROWS = {77, 78}                            # Rows where D & E are storage
-    STORAGE_COLUMNS = {"D", "E"}                       # Columns affected by storage rows
+    STORAGE_COLUMNS = {"D", "E", "F"}                       # Columns affected by storage rows
 
     def __init__(self):
         """Build the initial seat map when a SeatMap object is created."""
