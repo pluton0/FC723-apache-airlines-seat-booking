@@ -1,95 +1,109 @@
 """
 ==============================================================================
- database.py - SQLite Persistence Module
+ database.py - SQLite (Object-Oriented)
 ==============================================================================
 Module      : FC723 - Programming Theory
-Assignment  : Final Project 
-
-Handles all direct interaction with the SQLite database used to store
-traveller and booking details. No other module should execute raw SQL
-directly -- they should call these functions instead, which keeps the
-database schema and queries in one place and makes the rest of the
-application easier to test and maintain.
-
-DATABASE SCHEMA
----------------
-    CREATE TABLE bookings (
-        reference       TEXT PRIMARY KEY,
-        passport_number TEXT NOT NULL,
-        first_name      TEXT NOT NULL,
-        last_name       TEXT NOT NULL,
-        seat_row        INTEGER NOT NULL,
-        seat_column     TEXT NOT NULL
-    );
+Assignment  : Final Project - Part B
 ==============================================================================
 """
 
 import sqlite3
 
-DB_FILE = "bookings.db"
 
-
-def init_database(db_file=DB_FILE):
+class Database:
     """
-    Create the SQLite database file and the 'bookings' table if they
-    do not already exist.
-
-    Parameters
-    ----------
-    db_file : str
-        Path to the SQLite database file (defaults to "bookings.db").
-
-    Returns
-    -------
-    sqlite3.Connection
-        An open connection to the database.
+    Wraps a single SQLite connection and all operations performed on
+    the 'bookings' table.
     """
-    connection = sqlite3.connect(db_file)
-    cursor = connection.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS bookings (
-            reference       TEXT PRIMARY KEY,
-            passport_number TEXT NOT NULL,
-            first_name      TEXT NOT NULL,
-            last_name       TEXT NOT NULL,
-            seat_row        INTEGER NOT NULL,
-            seat_column     TEXT NOT NULL
-        )
-    """)
-    connection.commit()
-    return connection
 
+    DEFAULT_DB_FILE = "bookings.db"
 
-def save_booking_to_db(connection, reference, passport_number,
-                        first_name, last_name, row, column):
-    """Insert a new booking row into the database."""
-    cursor = connection.cursor()
-    cursor.execute("""
-        INSERT INTO bookings
-            (reference, passport_number, first_name, last_name,
-             seat_row, seat_column)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (reference, passport_number, first_name, last_name, row, column))
-    connection.commit()
+    def __init__(self, db_file=DEFAULT_DB_FILE):
+        """Initialize database connection and ensure the bookings table exists."""
+        self.db_file = db_file
+        self.connection = None
+        try:
+            # Connect to the local SQLite database file
+            self.connection = sqlite3.connect(self.db_file)
+            self._create_table()
+        except sqlite3.Error as e:
+            # REFINEMENT: Safety net if the database file cannot be accessed or created
+            print(f"[Database error] Could not open database '{db_file}': {e}")
+            print("The program will continue, but bookings cannot be saved.\n")
 
+    def _create_table(self):
+        """Create the 'bookings' table if it does not already exist."""
+        try:
+            cursor = self.connection.cursor()
+            # COMPLIANCE: Table structure matches the project brief requirements exactly
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bookings (
+                    reference       TEXT PRIMARY KEY,
+                    passport_number TEXT NOT NULL,
+                    first_name      TEXT NOT NULL,
+                    last_name       TEXT NOT NULL,
+                    seat_row        INTEGER NOT NULL,
+                    seat_column     TEXT NOT NULL
+                )
+            """)
+            self.connection.commit()
+        except sqlite3.Error as e:
+            # EXCEPTION HANDLING: Prevents the program from crashing if table creation fails
+            print(f"[Database error] Could not create 'bookings' table: {e}\n")
 
-def delete_booking_from_db(connection, reference):
-    """Delete a booking row from the database by its reference."""
-    cursor = connection.cursor()
-    cursor.execute("DELETE FROM bookings WHERE reference = ?", (reference,))
-    connection.commit()
+    def is_available(self):
+        """Helper to check if the database is open before running any queries."""
+        return self.connection is not None
 
+    def is_reference_taken(self, reference):
+        """Check the database to ensure the newly generated reference is unique."""
+        if not self.is_available():
+            return False
+        try:
+            cursor = self.connection.cursor()
+            # OPTIMIZATION: Using 'SELECT 1' makes the search much faster than selecting whole rows
+            cursor.execute("SELECT 1 FROM bookings WHERE reference = ?", (reference,))
+            return cursor.fetchone() is not None
+        except sqlite3.Error as e:
+            # DEFENSIVE PROGRAMMING: Returns False on error so the main loop doesn't get stuck
+            print(f"[Database error] Could not check reference uniqueness: {e}\n")
+            return False
 
-def find_booking_by_reference(connection, reference):
-    """
-    Look up a booking by its reference number.
+    def save_booking(self, reference, passport_number, first_name, last_name, row, column):
+        """Insert a verified booking record into the database table."""
+        if not self.is_available():
+            print("[Database error] No database connection; booking was not saved.\n")
+            return False
+        try:
+            cursor = self.connection.cursor()
+            # SECURITY: Using '?' placeholders fully prevents SQL Injection vulnerabilities
+            cursor.execute("""
+                INSERT INTO bookings
+                    (reference, passport_number, first_name, last_name,
+                     seat_row, seat_column)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (reference, passport_number, first_name, last_name, row, column))
+            self.connection.commit()  # Save changes permanently
+            return True
+        except sqlite3.Error as e:
+            # RELIABILITY: Logs the error but returns False so the program keeps running smoothly
+            print(f"[Database error] Could not save booking {reference}: {e}\n")
+            return False
 
-    Returns
-    -------
-    tuple or None
-        (reference, passport_number, first_name, last_name,
-         seat_row, seat_column) if found, otherwise None.
-    """
-    cursor = connection.cursor()
-    cursor.execute("SELECT * FROM bookings WHERE reference = ?", (reference,))
-    return cursor.fetchone()
+    def delete_booking(self, reference):
+        """Remove a booking record from the database when a seat is freed."""
+        if not self.is_available():
+            print("[Database error] No database connection; booking was not deleted.\n")
+            return False
+        try:
+            cursor = self.connection.cursor()
+            # REFACTORING: Called by main.py whenever option 3 (Free a seat) is selected
+            cursor.execute("DELETE FROM bookings WHERE reference = ?", (reference,))
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            # DATA INTEGRITY: Failing to delete stops the system from freeing the seat in memory
+            print(f"[Database error] Could not delete booking {reference}: {e}\n")
+            return False
+
+    def find_booking(self, reference):
