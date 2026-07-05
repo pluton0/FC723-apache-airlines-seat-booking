@@ -66,9 +66,27 @@ def book_seat(seat_map, db):
         print(f"Sorry, seat {seat_id} is already reserved.\n")
         return
 
-    passport_number = input("Passport number: ").strip()
+    # -------------------------------------------------------------------------
+    # INPUT VALIDATION (Enhanced Security & Data Integrity)
+    # -------------------------------------------------------------------------
+    # 1. First Name Validation: Must contain only letters and spaces, and cannot be empty
     first_name = input("First name: ").strip()
+    if not first_name or not first_name.replace(" ", "").isalpha():
+        print("[Input Error] First name must contain only alphabetical characters.\n")
+        return
+
+    # 2. Last Name Validation: Must contain only letters and spaces, and cannot be empty
     last_name = input("Last name: ").strip()
+    if not last_name or not last_name.replace(" ", "").isalpha():
+        print("[Input Error] Last name must contain only alphabetical characters.\n")
+        return
+
+    # 3. Passport Number Validation: Must be alphanumeric (letters and numbers only)
+    passport_number = input("Passport number: ").strip()
+    if not passport_number or not passport_number.isalnum():
+        print("[Input Error] Passport number must be alphanumeric (letters and numbers only).\n")
+        return
+    # -------------------------------------------------------------------------
 
     # ALGORITHMIC DEPENDENCY: Pass the Database object as a service to ensure uniqueness
     try:
