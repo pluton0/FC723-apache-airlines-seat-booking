@@ -7,11 +7,12 @@ Assignment  : Final Project - Part B
 ==============================================================================
 """
 
+import re
 import sqlite3
 
-from seat import SeatMap
 from database import Database
 from reference import generate_booking_reference
+from seat import SeatMap
 
 
 # ---------------------------------------------------------------------------
@@ -66,25 +67,29 @@ def book_seat(seat_map, db):
         print(f"Sorry, seat {seat_id} is already reserved.\n")
         return
 
+# -------------------------------------------------------------------------
+    # INPUT VALIDATION (Enhanced Security, Type Checking & Data Integrity)
     # -------------------------------------------------------------------------
-    # INPUT VALIDATION (Enhanced Security & Data Integrity)
-    # -------------------------------------------------------------------------
-    # 1. First Name Validation: Must contain only letters and spaces, and cannot be empty
+    # 1. First Name Validation: Must contain only alphabetical characters and spaces
     first_name = input("First name: ").strip()
     if not first_name or not first_name.replace(" ", "").isalpha():
         print("[Input Error] First name must contain only alphabetical characters.\n")
         return
 
-    # 2. Last Name Validation: Must contain only letters and spaces, and cannot be empty
+    # 2. Last Name Validation: Must contain only alphabetical characters and spaces
     last_name = input("Last name: ").strip()
     if not last_name or not last_name.replace(" ", "").isalpha():
         print("[Input Error] Last name must contain only alphabetical characters.\n")
         return
 
-    # 3. Passport Number Validation: Must be alphanumeric (letters and numbers only)
+    # 3. Passport Number Validation via Exact Regex Matching
+    # Enforces: 7-9 total characters, AT LEAST one letter, AT LEAST one digit
     passport_number = input("Passport number: ").strip()
-    if not passport_number or not passport_number.isalnum():
-        print("[Input Error] Passport number must be alphanumeric (letters and numbers only).\n")
+    passport_pattern = r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{7,9}$"
+    
+    if re.match(passport_pattern, passport_number) is None:
+        print("[Input Error] Invalid passport format! Must be 7-9 alphanumeric characters "
+              "and contain a combination of BOTH letters and digits.\n")
         return
     # -------------------------------------------------------------------------
 
