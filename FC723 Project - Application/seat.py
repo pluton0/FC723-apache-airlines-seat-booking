@@ -36,11 +36,11 @@ class SeatMap:
         for row in range(1, self.TOTAL_ROWS + 1):
             for col in self.SEAT_COLUMNS:
                 seat_id = f"{row}{col}"
-                # CONDITIONAL LAYOUT: Enforce physical aircraft storage boundary rules [cite: 3, 95, 300]
+                # CONDITIONAL LAYOUT: Enforce physical aircraft storage boundary rules 
                 if row in self.STORAGE_ROWS and col in self.STORAGE_COLUMNS:
-                    grid[seat_id] = "S"      # storage - not bookable [cite: 3, 95]
+                    grid[seat_id] = "S"      # storage - not bookable 
                 else:
-                    grid[seat_id] = "F"      # free - bookable [cite: 3, 95]
+                    grid[seat_id] = "F"      # free - bookable 
         return grid
 
     @staticmethod
@@ -69,7 +69,7 @@ class SeatMap:
     @staticmethod
     def is_reserved(status):
         """Return True if `status` represents a reserved seat."""
-        # BUSINESS LOGIC: A seat is reserved if it holds a unique alphanumeric reference [cite: 29, 121]
+        # BUSINESS LOGIC: A seat is reserved if it holds a unique alphanumeric reference 
         return status not in ("F", "S", "X")
 
     def get_status(self, seat_id):
@@ -89,14 +89,14 @@ class SeatMap:
         print("                            up the actual booking reference)")
         for row in range(1, self.TOTAL_ROWS + 1):
             cells = []
-            # UI SEPARATION: Columns A-C rendered before the physical aisle path [cite: 3, 95]
+            # UI SEPARATION: Columns A-C rendered before the physical aisle path 
             for col in ["A", "B", "C"]:
                 status = self.grid[f"{row}{col}"]
                 cells.append(status if status in ("F", "S") else "R")
             
-            cells.append("X")  # DYNAMIC RENDERING: Inject aisle marker without storing it in memory [cite: 3, 95]
+            cells.append("X")  # DYNAMIC RENDERING: Inject aisle marker without storing it in memory 
             
-            # UI SEPARATION: Columns D-F rendered after the aisle path [cite: 3, 95]
+            # UI SEPARATION: Columns D-F rendered after the aisle path 
             for col in ["D", "E", "F"]:
                 status = self.grid[f"{row}{col}"]
                 cells.append(status if status in ("F", "S") else "R")
