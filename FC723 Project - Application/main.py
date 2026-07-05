@@ -1,37 +1,16 @@
 """
 ==============================================================================
- Apache Airlines - Seat Booking System (PART B - Modular Version)
+ Apache Airlines - Seat Booking System (PART B - Modular, OOP Version)
 ==============================================================================
 Module      : FC723 - Programming Theory
 Assignment  : Final Project - Part B
-Author      : P489993
-
-This is the single executable entry point for the application. It
-contains only the menu, the user interaction logic, and the main
-program loop. All aircraft layout logic lives in seat.py, all database
-access lives in database.py, and the booking reference algorithm lives
-in reference.py -- keeping this file focused purely on orchestration.
-
-Run with:
-    python main.py
-
-FOLDER STRUCTURE
-----------------
-    FC723 Project - Application/
-        main.py         <- run this file
-        seat.py         <- aircraft layout & seat map
-        database.py     <- SQLite persistence
-        reference.py    <- booking reference algorithm
 ==============================================================================
 """
 
-from seat import build_seat_map, parse_seat_input, is_reserved, display_seat_map
-from database import (
-    init_database,
-    save_booking_to_db,
-    delete_booking_from_db,
-    find_booking_by_reference,
-)
+import sqlite3
+
+from seat import SeatMap
+from database import Database
 from reference import generate_booking_reference
 
 
@@ -41,44 +20,49 @@ from reference import generate_booking_reference
 def check_availability(seat_map):
     """Option 1: Check whether a specific seat is available."""
     raw = input("Enter seat to check (e.g. 12A): ")
-    seat_id = parse_seat_input(raw)
+    # VALIDATION: Delegate formatting checking to the static helper in SeatMap
+    seat_id = SeatMap.parse_seat_input(raw)
     if seat_id is None:
         print(f"'{raw}' is not a valid seat reference.\n")
         return
 
-    status = seat_map.get(seat_id)
+    # COUPLING: Query the SeatMap state without accessing the underlying dictionary directly
+    status = seat_map.get_status(seat_id)
     if status == "F":
         print(f"Seat {seat_id} is FREE.\n")
     elif status == "S":
         print(f"Seat {seat_id} is a STORAGE AREA and cannot be booked.\n")
-    elif is_reserved(status):
+    elif SeatMap.is_reserved(status):
         print(f"Seat {seat_id} is RESERVED (reference: {status}).\n")
     else:
         print(f"Seat {seat_id} does not exist.\n")
 
 
-def book_seat(seat_map, connection):
+def book_seat(seat_map, db):
     """
     Option 2: Book a seat.
 
     On success, a unique booking reference is generated (reference.py)
     and stored in the seat map, and the traveller's details are saved
-    to the database (database.py).
+    to the database via the Database object. All database access goes
+    through Database's own try/except handling, so a database failure
+    here is reported to the user rather than crashing the program.
     """
     raw = input("Enter seat to book (e.g. 12A): ")
-    seat_id = parse_seat_input(raw)
+    seat_id = SeatMap.parse_seat_input(raw)
     if seat_id is None:
         print(f"'{raw}' is not a valid seat reference.\n")
         return
 
-    status = seat_map.get(seat_id)
+    # DEFENSIVE PROGRAMMING: Verify layout constraints before asking for passenger info
+    status = seat_map.get_status(seat_id)
     if status == "S":
         print(f"Seat {seat_id} is a storage area and cannot be booked.\n")
         return
     if status is None:
         print(f"Seat {seat_id} does not exist.\n")
         return
-    if is_reserved(status):
+    if SeatMap.is_reserved(status):
         print(f"Sorry, seat {seat_id} is already reserved.\n")
         return
 
@@ -86,52 +70,68 @@ def book_seat(seat_map, connection):
     first_name = input("First name: ").strip()
     last_name = input("Last name: ").strip()
 
-    reference = generate_booking_reference(connection)
+    # ALGORITHMIC DEPENDENCY: Pass the Database object as a service to ensure uniqueness
+    try:
+        reference = generate_booking_reference(db)
+    except RuntimeError as e:
+        print(f"[Booking error] Could not generate a booking reference: {e}\n")
+        return
+
+    # DATA CONVERSION: Extract structural values matching the database table schema
     row = int("".join(ch for ch in seat_id if ch.isdigit()))
     column = seat_id[-1]
 
-    save_booking_to_db(connection, reference, passport_number,
-                        first_name, last_name, row, column)
-    seat_map[seat_id] = reference
+    # TRANSACTION VALIDATION: Only update the in-memory map if the persistent database write succeeds
+    saved = db.save_booking(reference, passport_number, first_name, last_name, row, column)
+    if not saved:
+        print(f"Seat {seat_id} could not be booked due to a database error. "
+              f"Please try again.\n")
+        return
 
+    seat_map.set_status(seat_id, reference)
     print(f"Seat {seat_id} booked successfully. "
           f"Your booking reference is: {reference}\n")
 
 
-def free_seat(seat_map, connection):
+def free_seat(seat_map, db):
     """
     Option 3: Free a previously booked seat.
 
-    The booking record is also deleted from the database
-    (database.py), and the seat map entry is reset to "F".
+    The booking record is also deleted from the database, and the
+    seat map entry is reset to "F" only if the delete succeeds -
+    this avoids a seat becoming falsely "free" in memory while its
+    booking record still lingers in the database after a failed delete.
     """
     raw = input("Enter seat to free (e.g. 12A): ")
-    seat_id = parse_seat_input(raw)
+    seat_id = SeatMap.parse_seat_input(raw)
     if seat_id is None:
         print(f"'{raw}' is not a valid seat reference.\n")
         return
 
-    status = seat_map.get(seat_id)
+    status = seat_map.get_status(seat_id)
     if status == "F":
         print(f"Seat {seat_id} is not currently booked.\n")
     elif status == "S":
         print(f"Seat {seat_id} is a storage area.\n")
-    elif is_reserved(status):
-        delete_booking_from_db(connection, status)
-        seat_map[seat_id] = "F"
-        print(f"Seat {seat_id} (reference {status}) has been freed and "
-              f"the booking record has been removed from the database.\n")
+    elif SeatMap.is_reserved(status):
+        # DATA CONSISTENCY: Ensure memory layout and SQL database stay completely synchronized
+        deleted = db.delete_booking(status)
+        if deleted:
+            seat_map.set_status(seat_id, "F")
+            print(f"Seat {seat_id} (reference {status}) has been freed and "
+                  f"the booking record has been removed from the database.\n")
+        else:
+            print(f"Seat {seat_id} could not be freed due to a database error. "
+                  f"Please try again.\n")
     else:
         print(f"Seat {seat_id} does not exist.\n")
 
 
-def search_by_reference(connection):
-    """
-    Option 5: search for a booking using its reference number and
-    display the traveller's details from the database.
-    """
+def search_by_reference(db):
+    """Option 5: Search for a booking using its reference number."""
     reference = input("Enter booking reference: ").strip().upper()
-    result = find_booking_by_reference(connection, reference)
+    # ENCAPSULATION: Query execution logic is fully contained inside the Database class
+    result = db.find_booking(reference)
     if result is None:
         print(f"No booking found with reference {reference}.\n")
         return
@@ -161,35 +161,44 @@ def main():
     """
     Main program loop.
 
-    Builds the in-memory seat map (seat.py), opens/creates the SQLite
-    database (database.py), then loops over the menu until the user
-    exits. The database connection is closed cleanly on exit.
+    Creates one SeatMap object (in-memory aircraft layout) and one
+    Database object (SQLite persistence), then loops over the menu
+    until the user exits. The database connection is closed cleanly
+    on exit regardless of how the loop ends.
     """
-    seat_map = build_seat_map()
-    connection = init_database()
+    # COMPLIANCE: Instantiate classes reflecting the associations in the UML Class Diagram
+    seat_map = SeatMap()
+    db = Database()
 
     try:
+        # PERSISTENT CONTROL FLOW: Keep the application running inside a continuous loop
         while True:
             print_menu()
             choice = input("Select an option (1-6): ").strip()
 
-            if choice == "1":
-                check_availability(seat_map)
-            elif choice == "2":
-                book_seat(seat_map, connection)
-            elif choice == "3":
-                free_seat(seat_map, connection)
-            elif choice == "4":
-                display_seat_map(seat_map)
-            elif choice == "5":
-                search_by_reference(connection)
-            elif choice == "6":
-                print("Thank you for using Apache Airlines Seat Booking System.")
-                break
-            else:
-                print("Invalid option, please choose a number between 1 and 6.\n")
+            try:
+                if choice == "1":
+                    check_availability(seat_map)
+                elif choice == "2":
+                    book_seat(seat_map, db)
+                elif choice == "3":
+                    free_seat(seat_map, db)
+                elif choice == "4":
+                    seat_map.display()
+                elif choice == "5":
+                    search_by_reference(db)
+                elif choice == "6":
+                    print("Thank you for using Apache Airlines Seat Booking System.")
+                    break
+                else:
+                    print("Invalid option, please choose a number between 1 and 6.\n")
+            except sqlite3.Error as e:
+                # RELIABILITY: Catch all block for unhandled low level database engine errors
+                print(f"[Unexpected database error] {e}\n"
+                      f"Please try that action again.\n")
     finally:
-        connection.close()
+        # RESOURCE MANAGEMENT: Guarantee the file handle is closed even if the program terminates unexpectedly
+        db.close()
 
 
 if __name__ == "__main__":
