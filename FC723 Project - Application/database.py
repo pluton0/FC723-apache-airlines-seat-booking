@@ -107,3 +107,23 @@ class Database:
             return False
 
     def find_booking(self, reference):
+        """Search and retrieve booking details using the 8-character reference code."""
+        if not self.is_available():
+            print("[Database error] No database connection; cannot search bookings.\n")
+            return None
+        try:
+            cursor = self.connection.cursor()
+            # READ OPERATION: Fetches the matching row for the Part B lookup feature
+            cursor.execute("SELECT * FROM bookings WHERE reference = ?", (reference,))
+            return cursor.fetchone()
+        except sqlite3.Error as e:
+            print(f"[Database error] Could not search for booking {reference}: {e}\n")
+            return None
+
+    def close(self):
+        """Cleanly close the database connection when the program exits."""
+        if self.connection is not None:
+            try:
+                self.connection.close()
+            except sqlite3.Error as e:
+                print(f"[Database error] Error while closing database: {e}\n")
